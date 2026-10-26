@@ -2,16 +2,20 @@ import html
 import json
 import math
 import random
+import uuid
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
+from supabase import create_client
 
 
 # ============================================================
-# RAT RACE NYC - VERSION 5
-# Automatic 12-month simulation
+# RAT RACE NYC - VERSION 6
+# Shared Hall of Rat Fame
+# Supabase multiplayer leaderboard
+# Automatic 12-month animation
 # Rats run RIGHT TO LEFT
 # ============================================================
 
@@ -25,52 +29,75 @@ BUDGET = 100_000
 INITIAL = 450
 
 OPTIONS = {
-    "A": (
-        "Deploy rat traps",
-        10_000,
-        "Quick removal, limited lasting effect."
-    ),
-    "B": (
-        "Hire exterminators",
-        25_000,
-        "Strong initial removal, weaker long-term effect."
-    ),
-    "C": (
-        "Increase garbage collection",
-        30_000,
-        "Reduces the food supply that supports rat growth."
-    ),
-    "D": (
-        "Seal building entry points",
-        20_000,
-        "Reduces shelter and access to nesting sites."
-    ),
-    "E": (
-        "Organizational Restructuring Initiative",
-        15_000,
-        "Replace the entire rat control team."
-    ),
-    "F": (
-        "Strategic Advisory Partnership",
-        40_000,
-        "Commission a prestigious consulting report."
-    ),
-    "G": (
-        "Public Awareness and Engagement Campaign",
-        20_000,
-        "Launch a citywide anti-rat publicity campaign."
-    ),
-    "H": (
-        "Interagency Rodent Coordination Task Force",
-        15_000,
-        "Create a new committee to coordinate the response."
-    ),
-    "I": (
-        "Executive Leadership Enhancement",
-        25_000,
-        "Appoint a Chief Rat Officer."
-    ),
+    "A": ("Deploy rat traps", 10_000,
+          "Quick removal, limited lasting effect."),
+    "B": ("Hire exterminators", 25_000,
+          "Strong initial removal, weaker long-term effect."),
+    "C": ("Increase garbage collection", 30_000,
+          "Reduces the food supply that supports rat growth."),
+    "D": ("Seal building entry points", 20_000,
+          "Reduces shelter and access to nesting sites."),
+    "E": ("Organizational Restructuring Initiative", 15_000,
+          "Replace the entire rat control team."),
+    "F": ("Strategic Advisory Partnership", 40_000,
+          "Commission a prestigious consulting report."),
+    "G": ("Public Awareness and Engagement Campaign", 20_000,
+          "Launch a citywide anti-rat publicity campaign."),
+    "H": ("Interagency Rodent Coordination Task Force", 15_000,
+          "Create a new committee to coordinate the response."),
+    "I": ("Executive Leadership Enhancement", 25_000,
+          "Appoint a Chief Rat Officer."),
 }
+
+
+# ============================================================
+# SUPABASE CONNECTION
+# ============================================================
+
+@st.cache_resource
+def get_database():
+    return create_client(
+        st.secrets["supabase"]["url"],
+        st.secrets["supabase"]["key"]
+    )
+
+
+def save_score(run, final_population):
+    """Save one completed game to the shared database."""
+
+    database = get_database()
+
+    record = {
+        "game_id": run["game_id"],
+        "player_name": run["name"],
+        "rats_remaining": final_population,
+        "interventions": ", ".join(run["keys"]),
+        "budget_spent": run["spent"]
+    }
+
+    database.table(
+        "rat_race_scores"
+    ).insert(record).execute()
+
+
+def get_leaderboard():
+    """Retrieve the top three scores from all players."""
+
+    database = get_database()
+
+    response = (
+        database.table("rat_race_scores")
+        .select(
+            "player_name,rats_remaining,"
+            "interventions,budget_spent,created_at"
+        )
+        .order("rats_remaining", desc=False)
+        .order("created_at", desc=False)
+        .limit(3)
+        .execute()
+    )
+
+    return response.data or []
 
 
 # ============================================================
@@ -154,8 +181,8 @@ st.markdown(
 
 st.caption(
     "A fictional, satirical systems-science game. "
-    "All intervention costs, population dynamics, and political "
-    "effects are invented for gameplay."
+    "All intervention costs, population dynamics, and "
+    "political effects are invented for gameplay."
 )
 
 
@@ -181,9 +208,13 @@ with st.sidebar:
         step=1
     )
 
+    st.success(
+        "🏆 Shared multiplayer leaderboard enabled!"
+    )
+
     st.caption(
-        "Results are saved to this browser session only. "
-        "A shared multiplayer leaderboard requires a database."
+        "Your completed game is submitted to the "
+        "shared Hall of Rat Fame."
     )
 
 
@@ -202,7 +233,9 @@ cols = st.columns(3)
 
 selected = []
 
-for i, (key, (label, cost, desc)) in enumerate(OPTIONS.items()):
+for i, (key, (label, cost, desc)) in enumerate(
+    OPTIONS.items()
+):
 
     with cols[i % 3]:
 
@@ -217,7 +250,10 @@ for i, (key, (label, cost, desc)) in enumerate(OPTIONS.items()):
             selected.append(key)
 
 
-spent = sum(OPTIONS[k][1] for k in selected)
+spent = sum(
+    OPTIONS[k][1]
+    for k in selected
+)
 
 remaining = BUDGET - spent
 
@@ -244,10 +280,14 @@ valid = (
 )
 
 if len(selected) > 3:
-    st.error("You can choose at most three interventions.")
+    st.error(
+        "You can choose at most three interventions."
+    )
 
 if spent > BUDGET:
-    st.error("Your plan exceeds the $100,000 budget.")
+    st.error(
+        "Your plan exceeds the $100,000 budget."
+    )
 
 
 # ============================================================
@@ -320,7 +360,10 @@ def simulate(keys, seed_value):
             + noise * n
         )
 
-        n = max(10.0, min(n, 1800.0))
+        n = max(
+            10.0,
+            min(n, 1800.0)
+        )
 
         results.append({
             "Month": month,
@@ -335,14 +378,14 @@ def simulate(keys, seed_value):
 
         if month == 3 and "E" in keys:
             events.append(
-                "📣 The replacement rat-control team is "
-                "still onboarding. The rats are not."
+                "📣 The replacement rat-control team "
+                "is still onboarding. The rats are not."
             )
 
         if month == 7 and "H" in keys:
             events.append(
-                "📋 Task force convenes its seventh meeting. "
-                "Attendance exceeds trap deployment."
+                "📋 Task force convenes its seventh "
+                "meeting. Attendance exceeds trap deployment."
             )
 
     return pd.DataFrame(results), events
@@ -365,12 +408,14 @@ if st.button(
     )
 
     st.session_state["run"] = {
+        "game_id": str(uuid.uuid4()),
         "name": player,
         "keys": list(selected),
         "seed": int(seed),
         "spent": spent,
         "data": data,
-        "events": events
+        "events": events,
+        "submitted": False
     }
 
     st.session_state["show_reveal"] = False
@@ -393,9 +438,8 @@ if "run" in st.session_state:
     )
 
     st.caption(
-        "The simulation automatically advances from Month 0 "
-        "to Month 12. Rats run from RIGHT to LEFT, and their "
-        "numbers change with the modeled population."
+        "The simulation advances automatically from "
+        "Month 0 to Month 12. Rats run from right to left."
     )
 
     monthly_counts = [
@@ -406,6 +450,7 @@ if "run" in st.session_state:
     scene = r"""
     <!doctype html>
     <html>
+
     <head>
     <meta charset="utf-8">
 
@@ -472,16 +517,10 @@ if "run" in st.session_state:
         border-top: 3px dashed #e9e3a4;
     }
 
-    /* =========================================
-       RATS RUN FROM RIGHT TO LEFT
-       ========================================= */
-
     .rat {
         position: absolute;
         font-size: 25px;
         display: block;
-
-        /* Begin outside the RIGHT edge */
         left: 100%;
 
         animation-name: scurry;
@@ -489,7 +528,6 @@ if "run" in st.session_state:
         animation-iteration-count: infinite;
 
         filter: drop-shadow(1px 2px 1px #3337);
-
         will-change: transform;
         pointer-events: none;
     }
@@ -628,8 +666,6 @@ if "run" in st.session_state:
         updateTravelDistance
     );
 
-    // Create the animated rats
-
     for (let i = 0; i < maxIcons; i++) {
 
         const el = document.createElement("span");
@@ -641,15 +677,11 @@ if "run" in st.session_state:
             30 + Math.random() * 52
         ) + "%";
 
-        // Different rats have different speeds
-
         const duration = 7 + Math.random() * 9;
 
         el.style.animationDuration = (
             duration + "s"
         );
-
-        // Stagger the rats across the scene
 
         el.style.animationDelay = (
             -Math.random() * duration + "s"
@@ -661,8 +693,6 @@ if "run" in st.session_state:
 
         pool.push(el);
     }
-
-    // Update population each month
 
     function showMonth() {
 
@@ -692,8 +722,6 @@ if "run" in st.session_state:
         ) + "%";
     }
 
-    // Pause or resume
-
     function setPlaying(value) {
 
         playing = value;
@@ -721,20 +749,14 @@ if "run" in st.session_state:
         setPlaying(!playing);
     };
 
-    // Replay the simulation
-
     replay.onclick = () => {
 
         month = 0;
-
         showMonth();
-
         setPlaying(true);
     };
 
     showMonth();
-
-    // Advance one month every 1.5 seconds
 
     setInterval(() => {
 
@@ -745,13 +767,11 @@ if "run" in st.session_state:
         if (month < 12) {
 
             month++;
-
             showMonth();
 
         } else {
 
             setPlaying(false);
-
             pause.textContent = "▶ Play again";
         }
 
@@ -780,9 +800,13 @@ if "run" in st.session_state:
 
     c1, c2, c3 = st.columns(3)
 
-    initial = int(data["Rats"].iloc[0])
+    initial = int(
+        data["Rats"].iloc[0]
+    )
 
-    final = int(data["Rats"].iloc[-1])
+    final = int(
+        data["Rats"].iloc[-1]
+    )
 
     c1.metric(
         "Initial population",
@@ -835,101 +859,55 @@ if "run" in st.session_state:
 
 
     # ========================================================
-    # END GAME
+    # SUBMIT GAME RESULTS
     # ========================================================
 
     if st.button(
-        "🏆 FINISH GAME & REVEAL RESULTS",
-        use_container_width=True
+        "🏆 FINISH GAME & SUBMIT SCORE",
+        use_container_width=True,
+        disabled=run["submitted"]
     ):
 
-        st.session_state["show_reveal"] = True
+        try:
 
-        if "scores" not in st.session_state:
-            st.session_state["scores"] = []
+            save_score(
+                run,
+                final
+            )
 
-        signature = (
-            run["name"],
-            tuple(run["keys"]),
-            run["seed"],
-            final
-        )
+            run["submitted"] = True
 
-        if not any(
-            x["signature"] == signature
-            for x in st.session_state["scores"]
-        ):
+            st.session_state["show_reveal"] = True
 
-            st.session_state["scores"].append({
-                "name": run["name"],
-                "rats": final,
-                "signature": signature
-            })
+            st.success(
+                "🏆 Your score has been saved to "
+                "the shared Hall of Rat Fame!"
+            )
 
+        except Exception as error:
 
-    # ========================================================
-    # HALL OF RAT FAME
-    # ========================================================
+            st.error(
+                "Your score could not be submitted. "
+                "Please check the database connection "
+                "and try again."
+            )
+
+            st.caption(
+                f"Technical details: {type(error).__name__}"
+            )
 
     if st.session_state.get("show_reveal"):
 
         st.warning(
             "🚨 THE RATS ARE BACK! "
-            "Short-term removal can be undone when food, "
-            "shelter, and growth conditions remain."
+            "Short-term removal can be undone when "
+            "food, shelter, and growth conditions remain."
         )
 
         st.success(
             f'**{html.escape(run["name"])} finished '
             f'with {final:,} rats.** '
             f'Lower sustained populations rank higher.'
-        )
-
-        st.markdown(
-            "### 🏆 Hall of Rat Fame"
-        )
-
-        titles = [
-            (
-                "🥇",
-                "The Ratfather 🐀",
-                "The undisputed ruler of NYC's rat population"
-            ),
-            (
-                "🥈",
-                "Ratscal",
-                "Almost defeated the rats, but not quite"
-            ),
-            (
-                "🥉",
-                "Chief Rat Enabler",
-                "Somehow made the rats feel welcome"
-            )
-        ]
-
-        scores = sorted(
-            st.session_state.get("scores", []),
-            key=lambda s: s["rats"]
-        )[:3]
-
-        table = []
-
-        for i, entry in enumerate(scores):
-
-            medal, title, meaning = titles[i]
-
-            table.append({
-                "Rank": medal,
-                "Award": title,
-                "Player": entry["name"],
-                "Rats remaining": entry["rats"],
-                "Meaning": meaning
-            })
-
-        st.dataframe(
-            pd.DataFrame(table),
-            use_container_width=True,
-            hide_index=True
         )
 
         st.info(
@@ -942,15 +920,100 @@ if "run" in st.session_state:
             "population growth."
         )
 
-        st.caption(
-            "Leaderboard is session-only and not shared "
-            "across devices. Rat dynamics are illustrative, "
-            "not a validated NYC forecasting model."
-        )
-
 else:
 
     st.info(
         "Choose up to three interventions, stay within "
-        "budget, and deploy to see what happens over 12 months."
+        "budget, and deploy to see what happens "
+        "over 12 months."
+    )
+
+
+# ============================================================
+# SHARED HALL OF RAT FAME
+# ============================================================
+
+st.divider()
+
+st.markdown(
+    "## 🏆 Hall of Rat Fame"
+)
+
+st.write(
+    "The official Rat Race NYC leaderboard. "
+    "Scores are shared across all players and devices."
+)
+
+if st.button(
+    "🔄 Refresh Leaderboard",
+    use_container_width=True
+):
+    st.rerun()
+
+
+try:
+
+    scores = get_leaderboard()
+
+    titles = [
+        (
+            "🥇",
+            "The Ratfather 🐀",
+            "The undisputed ruler of NYC's rat population"
+        ),
+        (
+            "🥈",
+            "Ratscal",
+            "Almost defeated the rats, but not quite"
+        ),
+        (
+            "🥉",
+            "Chief Rat Enabler",
+            "Somehow made the rats feel welcome"
+        )
+    ]
+
+    if scores:
+
+        table = []
+
+        for i, entry in enumerate(scores):
+
+            medal, title, meaning = titles[i]
+
+            table.append({
+                "Rank": medal,
+                "Award": title,
+                "Player": entry["player_name"],
+                "Rats remaining": entry["rats_remaining"],
+                "Meaning": meaning
+            })
+
+        st.dataframe(
+            pd.DataFrame(table),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.caption(
+            "Rankings reflect the three lowest "
+            "submitted final rat populations."
+        )
+
+    else:
+
+        st.info(
+            "No scores yet. Be the first player "
+            "to enter the Hall of Rat Fame!"
+        )
+
+except Exception as error:
+
+    st.error(
+        "The shared leaderboard is not connected yet. "
+        "Check your Streamlit Secrets and Supabase table."
+    )
+
+    st.caption(
+        f"Technical details: {type(error).__name__}"
     )
